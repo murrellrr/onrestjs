@@ -6,10 +6,9 @@ export class ActionCommand extends RequestCommand {
      * @description
      * @param {RequestContext} context
      * @param {string} name
-     * @param {AsyncEventEmitter} asyncEventEmitter
      */
-    constructor(context, name, asyncEventEmitter) {
-        super(context, name, asyncEventEmitter);
+    constructor(context, name) {
+        super(context, name);
     }
 
     async execute() {
@@ -42,12 +41,6 @@ export class ActionDispatcher extends ContractDispatcher {
             return null;  // If the action name doesn't match, return null
 
         return new ActionCommand(context, this.name, this);
-    }
-
-    async execute(context) {
-        context.log.verbose("Enter", "ActionDispatcher", "execute");
-
-        context.log.verbose("Exit", "ActionDispatcher", "execute");
     }
 
     validate() {

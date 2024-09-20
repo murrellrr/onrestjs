@@ -1,79 +1,37 @@
-
+import {EventRegistrar} from "./EventRegistrar.js";
+import {WebError} from "./WebError.js";
+import {WebEvent} from "./WebEvent.js";
 
 /**
- * @description
- * @author Robert R Murrell
- * @copyright Copyright (c) 2024, KRI LLC. All rights reserved.
- * @licence MIT
+ *
  */
-export class AsyncEventEmitter {
-    /**
-     * @description
-     * @param {null|Map<string, function(*):*>} events
-     */
-    constructor(events = null) {
-        this._events = events || new Map();
-    }
-
+export class AsyncEventEmitter extends EventRegistrar {
     /**
      *
-     * @return {Map<string, function(*): *>}
+     * @param {null|Map<string, function(WebEvent):void>} listeners
      */
-    get events() {
-        return this._events;
+    constructor(listeners = null) {
+        super(listeners);
     }
 
     /**
      * @description
-     * @param {string} event
-     * @param {function(*):*} listener
-     */
-    on(event, listener) {
-        if(!this._events.has(event))
-            this._events.set(event, []);
-        this._events.get(event).push(listener);
-    }
-
-    /**
-     * @description
-     * @param {string} event
-     * @param {function(*):*} listener
-     */
-    off(event, listener) {
-        if (!this._events.has(event)) return;
-        const listeners = this._events.get(event);
-        const index = listeners.indexOf(listener);
-        if(index !== -1)
-            listeners.splice(index, 1);
-    }
-
-    /**
-     * @description
-     * @param {string} event
-     * @param {...} args
+     * @param {WebEvent} event
+     * @param {boolean} [allowCancel]
      * @return {Promise<void>}
      */
-    async emit(event, ...args) {
-        if(!this._events.has(event)) return;
+    async emit(event, allowCancel = true) {
+        if(!event || !(event instanceof WebEvent))
+            throw new WebError("Parameter 'event' must be of type WebEvent.");
+        if (!this._listeners.has(event.name)) return;
 
-        const listeners = [...this._events.get(event)]; // Create a copy of listeners
+        const listeners = /**@type{function(WebEvent):void}*/[...this._listeners.get(event.name)]; // Create a copy of listeners
 
         // Sequentially execute each listener
         for(const listener of listeners) {
-            await listener(...args);
+            await listener(event);
+            if(allowCancel && event.cancelable)
+                event.errorOnCanceled();
         }
-    }
-
-    /**
-     * @description
-     * @param {string} event
-     * @param {function(*):*} listener
-     */
-    once(event, listener) {
-        const wrapper = async (...args) => {
-            await listener(...args);
-            this.off(event, wrapper); // Remove the listener after it fires
-        };
-        this.on(event, wrapper);
     }
 }

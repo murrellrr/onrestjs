@@ -6,9 +6,18 @@ import {WebError} from "./WebError.js";
  * @copyright Copyright (c) 2024, KRI LLC. All rights reserved.
  * @licence MIT
  */
-export class AbortError extends WebError {
-    constructor(event) {
-        super("Internal Server Error", 500, event);
+export class EventCanceledError extends WebError {
+    constructor(event, reason = null) {
+        super("Internal Server Error", 500, reason);
+        this._event = event;
+    }
+
+    /**
+     * @description
+     * @return {*}
+     */
+    get event() {
+        return this._event;
     }
 }
 
@@ -19,9 +28,10 @@ export class AbortError extends WebError {
  * @licence MIT
  */
 export class WebEvent {
-    constructor(name) {
+    constructor(name, cancelable = false) {
         this._name = name;
-        this._aborted = false;
+        this._cancelable = cancelable;
+        this._canceled = false;
         this._reason = null;
     }
 
@@ -37,8 +47,18 @@ export class WebEvent {
      * @description
      * @return {boolean}
      */
-    get aborted() {
-        return this._aborted;
+    get cancelable() {
+        return this._cancelable
+    }
+
+    /**
+     * @description
+     * @return {boolean}
+     */
+    get canceled() {
+        if(this._cancelable)
+            return this._canceled;
+        else return false;
     }
 
     /**
@@ -46,24 +66,33 @@ export class WebEvent {
      * @return {*}
      */
     get reason() {
-        return this._reason;
+        if(this._cancelable)
+            return this._reason;
+        else return null;
     }
 
     /**
      * @description
      * @apram {*} [reason]
      */
-    abort(reason = null) {
-        this._reason = reason;
-        this._aborted = true;
+    cancel(reason = null) {
+        if(this._cancelable) {
+            this._reason = reason;
+            this._canceled = true;
+        }
     }
 
     /**
      * @description
-     * @param name
+     * @param {string} name
      */
     reset(name) {
         this._name = name;
-        this._aborted = false;
+        this._canceled = false;
+    }
+
+    errorOnCanceled() {
+        if(this._cancelable && this._canceled)
+            throw new EventCanceledError(this._name, this._reason);
     }
 }

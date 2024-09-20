@@ -1,13 +1,13 @@
-import {AsyncEventEmitter} from "./AsyncEventEmitter.js";
-import {FileNotFoundError} from "./WebError.js";
 
+import {FileNotFoundError} from "./WebError.js";
+import {EventRegistrar} from "./EventRegistrar.js";
 
 /**
  * @class BaseEntity
  * @abstract
  * @description Abstract base class for common entities (NamespaceDispatcher, ResourceDispatcher, ActionDispatcher)
  */
-export class RequestDispatcher extends AsyncEventEmitter {
+export class RequestDispatcher extends EventRegistrar {
     /**
      * @param {string} name - The name of the entity.
      * @param {object} [options]
@@ -66,6 +66,13 @@ export class RequestDispatcher extends AsyncEventEmitter {
       * @throws {FileNotFoundError}
       */
      static matchAndExtractIds(path, url, slice = 2) {
+         if(path === "/")
+             return {
+                 resource: "/",
+                 id: null, // Return null if no ID is found
+                 remainingUrl: url.slice(slice)  // Format remaining URL for further matching
+             };
+
          const urlParts = url.split('/').filter(Boolean);  // Split URL into parts and filter empty strings
 
          // Ensure the URL starts with the current entity's name

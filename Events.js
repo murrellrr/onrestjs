@@ -2,7 +2,7 @@
 
 
 export const Events = {
-    action: {
+    action: { // Won't run until AAA complete.
         enqueue: {
             On: "action.enqueue",
             OnAfter: "action.enqueue.after",
@@ -60,7 +60,27 @@ export const Events = {
             On: "http.error",
         },
         request: {
-            methods: {
+            auth: {
+                authenticate: {
+                    On: "http.request.auth.authenticate",
+                    OnAfter: "http.request.auth.authenticate.after",
+                    OnBefore: "http.request.auth.authenticate.before",
+                    OnReject: "http.request.auth.authenticate.reject"
+                },
+                authorize: {
+                    On: "http.request.auth.authorize",
+                    OnAfter: "http.request.auth.authorize.after",
+                    OnBefore: "http.request.auth.authorize.before",
+                    OnDeny: "http.request.auth.authenticate.deny"
+                },
+                audit: {
+                    On: "http.request.auth.audit",
+                },
+                error: {
+                    On: "http.request.auth.error",
+                }
+            },
+            methods: { // Won't run until AAA complete
                 OnDelete: "http.request.method.delete",
                 OnGet: "http.request.method.get",
                 OnHead: "http.request.method.head",
@@ -70,7 +90,6 @@ export const Events = {
                 OnPut: "http.request.method.put",
                 OnTrace: "http.request.method.trace"
             },
-            On: "http.request",
             OnAfter: "http.request.after",
             OnBefore: "http.request.before",
             transform: {
@@ -111,7 +130,7 @@ export const Events = {
             OnBefore: "plugin.stop.before"
         }
     },
-    resource: {
+    resource: { // Won't run until AAA complete.
         create: {
             On: "resource.create",
             OnAfter: "resource.create.after",

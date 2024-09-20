@@ -2,14 +2,15 @@ import {ApplicationContext, RequestContext} from "./Context.js";
 import {ApplicationLog, DefaultConsoleLog} from "./ApplicationLog.js"
 
 import http from 'http';
-import {AbortError, WebEvent} from "./WebEvent.js";
+import {EventCanceledError, WebEvent} from "./WebEvent.js";
 import {FileNotFoundError, WebError} from "./WebError.js";
 import {AsyncEventEmitter} from "./AsyncEventEmitter.js";
 import {NamespaceDispatcher} from "./NamespaceDispatcher.js";
+import {Events} from "./Events.js";
 
 export class WebbApplicationLifecycleEvent extends WebEvent {
-    constructor(name, app) {
-        super(name);
+    constructor(name, app, cancelable = false) {
+        super(name, cancelable);
         this._app = app;
     }
 
@@ -17,15 +18,15 @@ export class WebbApplicationLifecycleEvent extends WebEvent {
 }
 
 export class LoadApplicationLogEvent extends WebbApplicationLifecycleEvent {
-    constructor(name, app) {
-        super(name, app);
+    constructor(name, app, cancelable = false) {
+        super(name, app, cancelable);
         /**@type{ApplicationLog}*/this.log = null;
     }
 }
 
 export class RequestEvent extends WebEvent {
-    constructor(name, app, context) {
-        super(name);
+    constructor(name, app, context, cancelable = false) {
+        super(name, cancelable);
         this._app = app;
         this._context = context;
     }
@@ -42,12 +43,6 @@ export class RequestEvent extends WebEvent {
  * @licence MIT
  */
 export class WebApplication extends AsyncEventEmitter {
-    static EVENT_AFTER_INITIALIZE  = "initialize.after";
-    static EVENT_BEFORE_INITIALIZE = "initialize.before";
-    static EVENT_AFTER_STARTUP     = "startup.after";
-    static EVENT_BEFORE_STARTUP    = "startup.before";
-    static EVENT_INITIALIZE_LOG    = "initialize.log";
-
     /**
      * @description
      * @param {string} name
@@ -87,7 +82,7 @@ export class WebApplication extends AsyncEventEmitter {
     /**
      * Adds a top-level resource to the root namespace (basePath).
      * @param {string} name - The name of the resource.
-     * @returns {Resource} The created resource.
+     * @returns {ResourceDispatcher} The created resource.
      */
     addResource(name) {
         return this.rootNamespace.addResource(name);
@@ -95,10 +90,11 @@ export class WebApplication extends AsyncEventEmitter {
 
     /**
      * Joins a resource or namespace to the root namespace (basePath).
-     * @param {BaseEntity} entity - The namespace or resource to join.
+     * @param {RequestDispatcher} entity - The namespace or resource to join.
+     * @returns {RequestDispatcher} The created resource.
      */
     join(entity) {
-        this.rootNamespace.join(entity);
+        return this.rootNamespace.join(entity);
     }
 
     /**
@@ -119,14 +115,12 @@ export class WebApplication extends AsyncEventEmitter {
      * @private
      */
     async _doBeforeRequestEvents(context) {
-        let _name = `${context.request.method}.before`;
-        let _event = new RequestEvent(_name, this, context);
-        await this.emit(_event.name, _event);
-        if(!_event.aborted) {
-            _event.reset(context.request.name);
-            await this.emit(_event.name, _event);
-        }
-        else throw new AbortError(_name);
+        let _event = new RequestEvent(Events.http.request.OnBefore, this, context, true);
+        context.eventQueue.enqueue(_event);
+        _event.reset(`http.request.method.${context.request.method}.before`);
+        context.eventQueue.enqueue(_event);
+        _event.reset(`http.request.method.${context.request.method}`);
+        context.eventQueue.enqueue(_event);
     }
 
     /**
@@ -136,9 +130,11 @@ export class WebApplication extends AsyncEventEmitter {
      * @private
      */
     async _doAfterRequestEvents(context) {
-        let _name = `${context.request.method}.after`;
-        let _event = new RequestEvent(_name, this, context);
-        await this.emit(_event.name, _event);
+        let _event =
+            new RequestEvent(`http.request.method.${context.request.method}.after`, this, context);
+        context.eventQueue.enqueue(_event);
+        _event.reset(Events.http.request.OnAfter);
+        context.eventQueue.enqueue(_event);
     }
 
     /**
@@ -151,22 +147,30 @@ export class WebApplication extends AsyncEventEmitter {
     async _handleRequest(req, res) {
         let _requestContext = new RequestContext(this._applicationContext, req, res);
 
+        _requestContext.prepare();
+
         try {
-            _requestContext.prepare();
-            //const url = req.url.replace(this.rootNamespace.name, '').replace(/^\/+/, '');
             await this._doBeforeRequestEvents(_requestContext);
-            let _resource = await this.rootNamespace.dispatch(req.url, _requestContext);
-            if(!_resource)
-                throw new FileNotFoundError(req.url);
-            else
-                await _resource.execute();
+
+            _requestContext.command = await this.rootNamespace.dispatch(req.url, _requestContext);
+
+            if (!_requestContext.command)
+                _requestContext.fail(new FileNotFoundError(req.url));
+            else {
+                // do after request events
+                await this._doAfterRequestEvents(_requestContext);
+                // Register the listeners
+                _requestContext.eventQueue.registerListeners(this);
+                // Execute the command
+                await _requestContext.command.process(_requestContext);
+            }
         }
         catch(error) {
-            throw error;
+            _requestContext.fail(error);
         }
         finally {
-            // always run after event even if aborted or failed.
-            await this._doAfterRequestEvents(_requestContext);
+            // check to see if we failed, and fail with error.
+            _requestContext.errorOnFailure();
         }
 
         return _requestContext;
@@ -221,13 +225,21 @@ export class WebApplication extends AsyncEventEmitter {
 
     async _initializeLog() {
         console.log("Initialize application log...");
-        let _logEvent = new LoadApplicationLogEvent(WebApplication.EVENT_INITIALIZE_LOG, this);
-        await this.emit(WebApplication.EVENT_INITIALIZE_LOG, _logEvent);
+        let _logEvent =
+            new LoadApplicationLogEvent(Events.app.log.initialize.OnBefore, this, true);
+        await this.emit(_logEvent);
+
+        _logEvent.reset(Events.app.log.initialize.On);
+        await this.emit(_logEvent);
 
         if(!_logEvent.log) {
             console.log("No application log provided, using default console log.");
             this._applicationContext.log = new DefaultConsoleLog(this._name);
         }
+
+        _logEvent =
+            new LoadApplicationLogEvent(Events.app.log.initialize.OnAfter, this, false);
+        await this.emit(_logEvent);
 
         this._applicationContext.log.info("Application log initialized.");
     }
@@ -249,21 +261,18 @@ export class WebApplication extends AsyncEventEmitter {
         console.log("| (_) | | | |_| |\\ \\| |___/\\__/ / | |  ");
         console.log(" \\___/|_| |_(_)_| \\_\\____/\\____/  \\_/  ");
         console.log(" ");
-        console.log("         RESTful event engine.");
+        console.log("RESTful action-as-resource, event-based ");
+        console.log("       web service framework");
         console.log(" ");
         console.log("Copyright (c) 2024, KRI, llc.");
         console.log("Distributed under MIT license. Happy RESTing!");
 
-
         let _event = new WebbApplicationLifecycleEvent(
-            WebApplication.EVENT_BEFORE_INITIALIZE, this);
-        await this.emit(_event.name, _event);
-        if(!_event.aborted) {
-            await this._initialize();
-            _event.reset(WebApplication.EVENT_AFTER_INITIALIZE);
-            await this.emit(_event.name, _event);
-        }
-        else throw new AbortError(WebApplication.EVENT_BEFORE_INITIALIZE);
+            Events.app.initialize.OnBefore, this, true);
+        await this.emit(_event);
+        await this._initialize();
+        _event.reset(Events.app.initialize.OnAfter);
+        await this.emit(_event);
     }
 
     /**
@@ -275,10 +284,12 @@ export class WebApplication extends AsyncEventEmitter {
         // Initialize the application
         await this._doInitialization();
 
-        // To the start-up
-        await this.emit(WebApplication.EVENT_BEFORE_STARTUP, this);
+        let _event =
+            new WebbApplicationLifecycleEvent(Events.app.start.OnBefore, this, true);
+        await this.emit(_event);
         await this._start();
-        await this.emit(WebApplication.EVENT_AFTER_STARTUP, this);
+        _event.reset(Events.app.initialize.OnAfter);
+        await this.emit(_event);
 
         return this;
     }

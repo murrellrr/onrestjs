@@ -2,7 +2,7 @@ import {ContractDispatcher} from "./ContractDispatcher.js";
 import {ActionDispatcher} from "./ActionDispatcher.js";
 import {NamespaceDispatcher} from "./NamespaceDispatcher.js";
 import {FileNotFoundError, WebError} from "./WebError.js";
-import {AbortError, WebEvent} from "./WebEvent.js";
+import {EventCanceledError, WebEvent} from "./WebEvent.js";
 import {RequestEvent} from "./WebApplication.js";
 import {RequestCommand} from "./RequestCommand.js";
 
@@ -46,10 +46,6 @@ export class ResourceCommand extends RequestCommand {
 export class ResourceDispatcher extends ContractDispatcher {
     static SLICE = 2;
 
-    static EVENT_AFTER_READ = "read.after";
-    static EVENT_BEFORE_READ = "read.before";
-    static EVENT_READ = "read";
-
     /**
      * @description
      * @param {string} name
@@ -89,26 +85,8 @@ export class ResourceDispatcher extends ContractDispatcher {
         else if (resource instanceof ActionDispatcher)
             this._actions.set(resource.name, resource);
         else
-            throw new WebError("Argument 'resource' must be an instance of NamespaceDispatcher, ResourceDispatcher, or ActionDispatcher.");
+            throw new WebError("Parameter 'resource' must be an instance of NamespaceDispatcher, ResourceDispatcher, or ActionDispatcher.");
         return resource;
-    }
-
-    async _fireBeforeReadEvents(context) {
-        let _event = new RequestEvent("read.before", this, context);
-        await this.emit(_event.name, _event);
-        if(!_event.aborted) {
-            _event.reset(context.request.name);
-            await this.emit(_event.name, _event);
-        }
-        else throw new AbortError(_name);
-    }
-
-    async fireAfterReadEvent() {}
-
-    async _doRead(id, context) {
-        let _instance = this.instance;
-        _instance.id = id;
-        // TODO: Proxy this object if lazy loadable.
     }
 
     /**
@@ -122,7 +100,7 @@ export class ResourceDispatcher extends ContractDispatcher {
         const matchResult = ResourceDispatcher.matchAndExtractResources(this.name, url);
 
         if(!matchResult.remainingUrl)
-            return new ResourceCommand(context, this.name, this);
+            return new ResourceCommand(context, this.name);
         else {
             // TODO: we need to load up the instance but take no other action
         }

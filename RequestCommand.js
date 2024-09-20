@@ -1,18 +1,16 @@
-import {AsyncEventEmitter} from "./AsyncEventEmitter.js";
+
 
 /**
  *
  * @abstract
  */
-export class RequestCommand extends AsyncEventEmitter {
+export class RequestCommand {
     /**
      * @description
      * @param {RequestContext} context
      * @param {string} name
-     * @param {AsyncEventEmitter} asyncEventEmitter
      */
-    constructor(context, name, asyncEventEmitter) {
-        super(asyncEventEmitter.events);
+    constructor(context, name) {
         this._name = name;
         this._context = context;
     }
@@ -30,10 +28,22 @@ export class RequestCommand extends AsyncEventEmitter {
     }
 
     /**
+     * @description
+     * @param {RequestContext} context
+     * @return {Promise<void>}
+     */
+    async process(context) {
+        // TODO: Do a bunch of event stuff.
+        await this.execute(context);
+    }
+
+    /**
+     * @description
+     * @param {RequestContext} context
      * @return {Promise<void>}
      * @abstract
      */
-    async execute() {
+    async execute(context) {
         //
     }
 }

@@ -1,6 +1,8 @@
 import {RequestDispatcher} from "./RequestDispatcher.js";
 import {ResourceDispatcher} from "./ResourceDispatcher.js";
 import {FileNotFoundError, WebError} from "./WebError.js";
+import {Events} from "./Events.js";
+import {WebEvent} from "./WebEvent.js";
 
 /**
  *
@@ -32,20 +34,8 @@ export class NamespaceDispatcher extends RequestDispatcher {
         else if(resource instanceof NamespaceDispatcher)
             this._namespaces.push(resource);
         else
-            throw new WebError("Argument 'resource' must be a NamespaceDispatcher or ResourceDispatcher.");
+            throw new WebError("Parameter 'resource' must be a NamespaceDispatcher or ResourceDispatcher.");
         return resource;
-    }
-
-    async _doBeforeNamespaceEvents() {
-        //
-    }
-
-    async _doAfterNamespaceEvents() {
-        //
-    }
-
-    async _doEvents(context) {
-        //
     }
 
     /**
@@ -64,20 +54,28 @@ export class NamespaceDispatcher extends RequestDispatcher {
             throw new FileNotFoundError(url);
         }
 
-        // Do my events for this namespace
-        await this._doEvents(context);
+        // TODO: Do my events for this namespace
+        let _event = new WebEvent(Events.namespace.OnBefore, true);
+        context.eventQueue.enqueue(_event);
 
-        // Now try to match the remaining URL with child namespaces or resources
-        // Match child namespaces first
-        for(const namespace of this._namespaces) {
-            const _namespace = await namespace.dispatch(matchResult.remainingUrl, context);
-            if(_namespace) return _namespace;
+        try {
+            // Now try to match the remaining URL with child namespaces or resources
+            // Match child namespaces first
+            for (const namespace of this._namespaces) {
+                const _namespace = await namespace.dispatch(matchResult.remainingUrl, context);
+                if (_namespace) return _namespace;
+            }
+
+            // Then match child resources
+            for (const resource of this._resources) {
+                const _resource = await resource.dispatch(matchResult.remainingUrl, context);
+                if (_resource) return _resource;
+            }
         }
-
-        // Then match child resources
-        for(const resource of this._resources) {
-            const _resource = await resource.dispatch(matchResult.remainingUrl, context);
-            if(_resource) return _resource;
+        finally {
+            _event.reset(Events.namespace.OnAfter);
+            context.eventQueue.enqueue(_event);
+            context.eventQueue.registerListeners(this);
         }
 
         return null;
