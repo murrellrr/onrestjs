@@ -31,16 +31,16 @@ export class ActionDispatcher extends ContractDispatcher {
      * @description
      * @param {string} url
      * @param {RequestContext} context
-     * @returns {Promise<RequestCommand>}
+     * @returns {RequestCommand}
      */
-    async dispatch(url, context) {
+    dispatch(url, context) {
         const urlParts = url.split('/').filter(Boolean);  // Split the URL into parts
 
         // Check if the URL starts with this action's name
         if(urlParts.length === 0 || urlParts[0] !== this.name)
             return null;  // If the action name doesn't match, return null
 
-        return new ActionCommand(context, this.name, this);
+        return new ActionCommand(context, this.name);
     }
 
     validate() {

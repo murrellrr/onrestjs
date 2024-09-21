@@ -42,9 +42,9 @@ export class NamespaceDispatcher extends RequestDispatcher {
      * Matches the URL and passes the request to child namespaces or resources.
      * @param {string} url - The request URL.
      * @param {RequestContext} context
-     * @return {Promise<RequestCommand>}
+     * @return {RequestCommand}
      */
-    async dispatch(url, context) {
+    dispatch(url, context) {
         // Match the URL to the current namespace and extract remaining URL
         const matchResult = NamespaceDispatcher.matchAndExtractNamespaces(this.name, url);
 
@@ -62,13 +62,13 @@ export class NamespaceDispatcher extends RequestDispatcher {
             // Now try to match the remaining URL with child namespaces or resources
             // Match child namespaces first
             for (const namespace of this._namespaces) {
-                const _namespace = await namespace.dispatch(matchResult.remainingUrl, context);
+                const _namespace = namespace.dispatch(matchResult.remainingUrl, context);
                 if (_namespace) return _namespace;
             }
 
             // Then match child resources
             for (const resource of this._resources) {
-                const _resource = await resource.dispatch(matchResult.remainingUrl, context);
+                const _resource = resource.dispatch(matchResult.remainingUrl, context);
                 if (_resource) return _resource;
             }
         }

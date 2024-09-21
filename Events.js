@@ -18,6 +18,26 @@ export const Events = {
         }
     },
     app: {
+        auth: {
+            authenticate: {
+                On: "app.auth.authenticate",
+                OnAfter: "app.auth.authenticate.after",
+                OnBefore: "app.auth.authenticate.before",
+                OnReject: "app.auth.authenticate.reject"
+            },
+            authorize: {
+                On: "app.auth.authorize",
+                OnAfter: "app.auth.authorize.after",
+                OnBefore: "app.auth.authorize.before",
+                OnDeny: "app.auth.authenticate.deny"
+            },
+            audit: {
+                On: "app.auth.audit",
+            },
+            error: {
+                On: "app.auth.error",
+            }
+        },
         log: {
             initialize: {
                 On: "app.log.initialize",
@@ -60,26 +80,6 @@ export const Events = {
             On: "http.error",
         },
         request: {
-            auth: {
-                authenticate: {
-                    On: "http.request.auth.authenticate",
-                    OnAfter: "http.request.auth.authenticate.after",
-                    OnBefore: "http.request.auth.authenticate.before",
-                    OnReject: "http.request.auth.authenticate.reject"
-                },
-                authorize: {
-                    On: "http.request.auth.authorize",
-                    OnAfter: "http.request.auth.authorize.after",
-                    OnBefore: "http.request.auth.authorize.before",
-                    OnDeny: "http.request.auth.authenticate.deny"
-                },
-                audit: {
-                    On: "http.request.auth.audit",
-                },
-                error: {
-                    On: "http.request.auth.error",
-                }
-            },
             methods: { // Won't run until AAA complete
                 OnDelete: "http.request.method.delete",
                 OnGet: "http.request.method.get",
@@ -96,6 +96,12 @@ export const Events = {
                 On: "http.request.transform",
                 OnAfter: "http.request.transform.after",
                 OnBefore: "http.request.transform.before"
+            },
+            validate: {
+                body: {
+                    OnAfter: "http.request.validate.body.after",
+                    OnBefore: "http.request.validate.body.before"
+                }
             }
         },
         response: {
@@ -141,10 +147,10 @@ export const Events = {
             OnAfter: "resource.delete.after",
             OnBefore: "resource.delete.before"
         },
-        find: {
-            On: "resource.find",
-            OnAfter: "resource.find.after",
-            OnBefore: "resource.find.before"
+        page: {
+            On: "resource.page",
+            OnAfter: "resource.page.after",
+            OnBefore: "resource.page.before"
         },
         read: {
             On: "resource.read",

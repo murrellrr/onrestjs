@@ -111,10 +111,9 @@ export class WebApplication extends AsyncEventEmitter {
     /**
      * @description
      * @param context
-     * @return {Promise<void>}
      * @private
      */
-    async _doBeforeRequestEvents(context) {
+    _doBeforeRequestEvents(context) {
         let _event = new RequestEvent(Events.http.request.OnBefore, this, context, true);
         context.eventQueue.enqueue(_event);
         _event.reset(`http.request.method.${context.request.method}.before`);
@@ -126,10 +125,9 @@ export class WebApplication extends AsyncEventEmitter {
     /**
      * @description
      * @param context
-     * @return {Promise<void>}
      * @private
      */
-    async _doAfterRequestEvents(context) {
+    _doAfterRequestEvents(context) {
         let _event =
             new RequestEvent(`http.request.method.${context.request.method}.after`, this, context);
         context.eventQueue.enqueue(_event);
@@ -141,28 +139,28 @@ export class WebApplication extends AsyncEventEmitter {
      * @description
      * @param req
      * @param res
-     * @return {Promise<RequestContext>}
+     * @return {RequestContext}
      * @private
      */
-    async _handleRequest(req, res) {
+    _handleRequest(req, res) {
         let _requestContext = new RequestContext(this._applicationContext, req, res);
 
         _requestContext.prepare();
 
         try {
-            await this._doBeforeRequestEvents(_requestContext);
+            this._doBeforeRequestEvents(_requestContext);
 
-            _requestContext.command = await this.rootNamespace.dispatch(req.url, _requestContext);
+            _requestContext.command = this.rootNamespace.dispatch(req.url, _requestContext);
 
             if (!_requestContext.command)
                 _requestContext.fail(new FileNotFoundError(req.url));
             else {
                 // do after request events
-                await this._doAfterRequestEvents(_requestContext);
+                this._doAfterRequestEvents(_requestContext);
                 // Register the listeners
                 _requestContext.eventQueue.registerListeners(this);
                 // Execute the command
-                await _requestContext.command.process(_requestContext);
+                //await _requestContext.command.process(_requestContext);
             }
         }
         catch(error) {
@@ -212,13 +210,13 @@ export class WebApplication extends AsyncEventEmitter {
         let _this = this;
         // create the web server
         this._server = http.createServer((req, res) => {
-            _this._handleRequest(req, res)
-                .then((context) => {
-                    _this._handleResponse(context);
-                })
-                .catch((error) => {
-                    _this._handleError(req, res, error);
-                });
+            try {
+                let _requestContext = _this._handleRequest(req, res);
+                this._handleResponse(_requestContext);
+            }
+            catch(error) {
+                this._handleError(req, res, error);
+            }
         });
         this._server.listen(this._port);
     }

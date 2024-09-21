@@ -41,9 +41,9 @@ export class RequestDispatcher extends EventRegistrar {
      * @description Match the URL to the entity's path and return the appropriate handler if matched.
      * @param {string} url - The request URL.
      * @param {RequestContext} context
-     * @return {Promise<RequestCommand>}
+     * @return {RequestCommand}
      */
-    async dispatch(url, context) {
+    dispatch(url, context) {
         throw new Error("Abstract method matchUrl must be implemented by subclasses.");
     }
 
