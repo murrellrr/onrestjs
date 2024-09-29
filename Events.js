@@ -1,5 +1,24 @@
-
-
+/*
+ * Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
 
 export const Events = {
     action: { // Won't run until AAA complete.
@@ -75,6 +94,36 @@ export const Events = {
             OnBefore: "app.terminate.before"
         }
     },
+    entity: { // Won't run until AAA complete.
+        create: {
+            On: "entity.create",
+            OnAfter: "entity.create.after",
+            OnBefore: "entity.create.before"
+        },
+        delete: {
+            On: "entity.delete",
+            OnAfter: "entity.delete.after",
+            OnBefore: "entity.delete.before"
+        },
+        page: {
+            On: "entity.page",
+            OnAfter: "entity.page.after",
+            OnBefore: "entity.page.before"
+        },
+        read: {
+            On: "entity.read",
+            OnAfter: "entity.read.after",
+            OnBefore: "entity.read.before"
+        },
+        update: {
+            On: "entity.update",
+            OnAfter: "entity.update.after",
+            OnBefore: "entity.update.before"
+        },
+        error: {
+            On: "entity.error"
+        }
+    },
     http: {
         error: {
             On: "http.error",
@@ -116,8 +165,7 @@ export const Events = {
         }
     },
     namespace: {
-        OnAfter: "namespace.after",
-        OnBefore: "namespace.before"
+        On: "namespace.on",
     },
     plugin: {
         install: {
@@ -134,36 +182,6 @@ export const Events = {
             On: "plugin.stop",
             OnAfter: "plugin.stop.after",
             OnBefore: "plugin.stop.before"
-        }
-    },
-    resource: { // Won't run until AAA complete.
-        create: {
-            On: "resource.create",
-            OnAfter: "resource.create.after",
-            OnBefore: "resource.create.before"
-        },
-        delete: {
-            On: "resource.delete",
-            OnAfter: "resource.delete.after",
-            OnBefore: "resource.delete.before"
-        },
-        page: {
-            On: "resource.page",
-            OnAfter: "resource.page.after",
-            OnBefore: "resource.page.before"
-        },
-        read: {
-            On: "resource.read",
-            OnAfter: "resource.read.after",
-            OnBefore: "resource.read.before"
-        },
-        update: {
-            On: "resource.update",
-            OnAfter: "resource.update.after",
-            OnBefore: "resource.update.before"
-        },
-        error: {
-            On: "resource.error"
         }
     }
 };

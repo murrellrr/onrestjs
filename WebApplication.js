@@ -1,14 +1,44 @@
+/*
+ * Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
+
 import {ApplicationContext, RequestContext} from "./Context.js";
 import {ApplicationLog, DefaultConsoleLog} from "./ApplicationLog.js"
-
-import http from 'http';
-import {EventCanceledError, WebEvent} from "./WebEvent.js";
+import {ApplicationEvent} from "./ApplicationEvent.js"
+import {WebEvent} from "./WebEvent.js";
 import {FileNotFoundError, WebError} from "./WebError.js";
 import {AsyncEventEmitter} from "./AsyncEventEmitter.js";
-import {NamespaceDispatcher} from "./NamespaceDispatcher.js";
 import {Events} from "./Events.js";
+import {AuthenticationEvent} from "./Security.js";
+import {AbstractResource, Namespace, Entity, Action} from "./Resource.js";
 
-export class WebbApplicationLifecycleEvent extends WebEvent {
+import http from 'http';
+
+/**
+ * @description
+ * @author Robert R Murrell
+ * @copyright Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved.
+ * @licence MIT
+ */
+export class WebbApplicationLifecycleEvent extends ApplicationEvent {
     constructor(name, app, cancelable = false) {
         super(name, cancelable);
         this._app = app;
@@ -17,22 +47,17 @@ export class WebbApplicationLifecycleEvent extends WebEvent {
     get app() {return this._app;}
 }
 
+/**
+ * @description
+ * @author Robert R Murrell
+ * @copyright Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved.
+ * @licence MIT
+ */
 export class LoadApplicationLogEvent extends WebbApplicationLifecycleEvent {
     constructor(name, app, cancelable = false) {
         super(name, app, cancelable);
         /**@type{ApplicationLog}*/this.log = null;
     }
-}
-
-export class RequestEvent extends WebEvent {
-    constructor(name, app, context, cancelable = false) {
-        super(name, cancelable);
-        this._app = app;
-        this._context = context;
-    }
-
-    get app() {return this._app;}
-    get context() {return this._context;}
 }
 
 /**
@@ -54,7 +79,7 @@ export class WebApplication extends AsyncEventEmitter {
         this._name = name;
         this._port = port;
         this._server = null;
-        this.rootNamespace = new NamespaceDispatcher(path, ''); // Create a root namespace for the basePath
+        /**@type{Namespace}*/this.rootNamespace = new Namespace("/");
         this._applicationContext = new ApplicationContext();
     }
 
@@ -62,36 +87,56 @@ export class WebApplication extends AsyncEventEmitter {
      * @description
      * @return {string}
      */
-    get resourcePath() {return this._path;}
+    get resourcePath() {
+        return this._path;
+    }
 
     /**
      * @description
      * @return {http.Server}
      */
-    get server() {return this._server;}
+    get server() {
+        return this._server;
+    }
+
+    /**
+     * @description
+     * @returns {ApplicationLog}
+     */
+    get log() {
+        return this._applicationContext.log;
+    }
+
+    /**
+     * @description
+     * @returns {ApplicationContext}
+     */
+    get context() {
+        return this._applicationContext;
+    }
 
     /**
      * Adds a top-level namespace to the root namespace (basePath).
      * @param {string} name - The name of the namespace.
-     * @returns {NamespaceDispatcher} The created namespace.
+     * @returns {Namespace} The created namespace.
      */
-    addNamespace(name) {
-        return this.rootNamespace.addNamespace(name);
+    namespace(name) {
+        return this.rootNamespace.namespace(name);
     }
 
     /**
      * Adds a top-level resource to the root namespace (basePath).
      * @param {string} name - The name of the resource.
-     * @returns {ResourceDispatcher} The created resource.
+     * @returns {Entity} The created resource.
      */
-    addResource(name) {
-        return this.rootNamespace.addResource(name);
+    entity(name) {
+        return this.rootNamespace.entity(name);
     }
 
     /**
      * Joins a resource or namespace to the root namespace (basePath).
-     * @param {RequestDispatcher} entity - The namespace or resource to join.
-     * @returns {RequestDispatcher} The created resource.
+     * @param {AbstractResource} entity - The namespace or resource to join.
+     * @returns {AbstractResource} The created resource.
      */
     join(entity) {
         return this.rootNamespace.join(entity);
@@ -99,68 +144,69 @@ export class WebApplication extends AsyncEventEmitter {
 
     /**
      * @description
-     * @param event
-     * @param listener
-     * @return {WebApplication}
+     * @param {RequestContext} context
+     * @returns {Promise<void>}
+     * @private
      */
-    on(event, listener) {
-        super.on(event, listener);
-        return this;
+    async _doBeforeRequestEvents(context) {
+        let _event = new WebEvent(Events.http.request.OnBefore,
+            context, true);
+        await this.emit(_event);
+        await this.emit(_event.reset(`http.request.method.${context.request.method}.before`));
+        await this._doAuthenticationEvents(context); // Do the authentication events
+        await this.emit(_event.reset(`http.request.method.${context.request.method}`));
     }
 
     /**
      * @description
      * @param context
+     * @returns {Promise<void>}
      * @private
      */
-    _doBeforeRequestEvents(context) {
-        let _event = new RequestEvent(Events.http.request.OnBefore, this, context, true);
-        context.eventQueue.enqueue(_event);
-        _event.reset(`http.request.method.${context.request.method}.before`);
-        context.eventQueue.enqueue(_event);
-        _event.reset(`http.request.method.${context.request.method}`);
-        context.eventQueue.enqueue(_event);
+    async _doAfterRequestEvents(context) {
+        let _event = new WebEvent(`http.request.method.${context.request.method}.after`,
+            context);
+        await this.emit(_event);
+        await this.emit(_event.reset(Events.http.request.OnAfter));
     }
 
     /**
      * @description
      * @param context
+     * @returns {Promise<void>}
      * @private
      */
-    _doAfterRequestEvents(context) {
-        let _event =
-            new RequestEvent(`http.request.method.${context.request.method}.after`, this, context);
-        context.eventQueue.enqueue(_event);
-        _event.reset(Events.http.request.OnAfter);
-        context.eventQueue.enqueue(_event);
+    async _doAuthenticationEvents(context) {
+        let _event = new AuthenticationEvent(Events.app.auth.authenticate.OnBefore, context);
+        await this.emit(_event);
+        await this.emit(_event.reset(Events.app.auth.authenticate.On));
+        await this.emit(_event.reset(Events.app.auth.authenticate.OnAfter));
     }
 
     /**
      * @description
      * @param req
      * @param res
-     * @return {RequestContext}
+     * @return {Promise<RequestContext>}
      * @private
      */
-    _handleRequest(req, res) {
+    async _handleRequest(req, res) {
         let _requestContext = new RequestContext(this._applicationContext, req, res);
 
         _requestContext.prepare();
 
         try {
-            this._doBeforeRequestEvents(_requestContext);
+            await this._doBeforeRequestEvents(_requestContext);
 
-            _requestContext.command = this.rootNamespace.dispatch(req.url, _requestContext);
+            let _command = await this.rootNamespace.dispatch(_requestContext);
 
-            if (!_requestContext.command)
+            if (!_command)
                 _requestContext.fail(new FileNotFoundError(req.url));
             else {
                 // do after request events
-                this._doAfterRequestEvents(_requestContext);
-                // Register the listeners
-                _requestContext.eventQueue.registerListeners(this);
+                await this._doAfterRequestEvents(_requestContext);
                 // Execute the command
-                //await _requestContext.command.process(_requestContext);
+                await _command.execute(_requestContext);
             }
         }
         catch(error) {
@@ -179,11 +225,10 @@ export class WebApplication extends AsyncEventEmitter {
      * @param {RequestContext} context
      * @private
      */
-    _handleResponse(context) {
+     _handleResponse(context) {
         let _response = context.response;
         _response.http.writeHead(_response.code, _response.message, {"Content-Type": "application/json"});
         _response.http.write(JSON.stringify(_response.body, null, 2));
-        _response.http.end();
     }
 
     /**
@@ -198,7 +243,6 @@ export class WebApplication extends AsyncEventEmitter {
         let _error = WebError.fromError(error);
         res.writeHead(_error.code, _error.message, {"Content-Type": "application/json"});
         res.write(JSON.stringify(_error.safe(), null, 2));
-        res.end();
     }
 
     /**
@@ -210,13 +254,16 @@ export class WebApplication extends AsyncEventEmitter {
         let _this = this;
         // create the web server
         this._server = http.createServer((req, res) => {
-            try {
-                let _requestContext = _this._handleRequest(req, res);
-                this._handleResponse(_requestContext);
-            }
-            catch(error) {
-                this._handleError(req, res, error);
-            }
+            _this._handleRequest(req, res)
+                .then((context) => {
+                    _this._handleResponse(context);
+                })
+                .catch((error) => {
+                    _this._handleError(req, res, error);
+                })
+                .finally(() => {
+                    res.end();
+                });
         });
         this._server.listen(this._port);
     }
@@ -269,8 +316,7 @@ export class WebApplication extends AsyncEventEmitter {
             Events.app.initialize.OnBefore, this, true);
         await this.emit(_event);
         await this._initialize();
-        _event.reset(Events.app.initialize.OnAfter);
-        await this.emit(_event);
+        await this.emit(_event.reset(Events.app.initialize.OnAfter));
     }
 
     /**
@@ -286,8 +332,7 @@ export class WebApplication extends AsyncEventEmitter {
             new WebbApplicationLifecycleEvent(Events.app.start.OnBefore, this, true);
         await this.emit(_event);
         await this._start();
-        _event.reset(Events.app.initialize.OnAfter);
-        await this.emit(_event);
+        await this.emit(_event.reset(Events.app.start.OnAfter));
 
         return this;
     }

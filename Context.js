@@ -1,12 +1,33 @@
+/*
+ * Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
+
 import {WebResponse} from "./WebResponse.js";
 import {WebRequest} from "./WebRequest.js";
-import {EventQueue} from "./EventQueue.js";
 import {WebError} from "./WebError.js";
 
 /**
  * @description
  * @author Robert R Murrell
- * @copyright Copyright (c) 2024, KRI LLC. All rights reserved.
+ * @copyright Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved.
  * @licence MIT
  */
 export class ApplicationContext {
@@ -21,7 +42,7 @@ export class ApplicationContext {
 /**
  * @description
  * @author Robert R Murrell
- * @copyright Copyright (c) 2024, KRI LLC. All rights reserved.
+ * @copyright Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved.
  * @licence MIT
  */
 export class RequestContext {
@@ -36,10 +57,8 @@ export class RequestContext {
         this._request = new WebRequest(req);
         this._response = new WebResponse(res);
         this._body = null;
-        this._log = null;
-        this._events = new EventQueue();
+        /**@type{ApplicationLog}*/this._log = null;
         /**@type{Map<string, object>}*/this._resources = new Map();
-        /**@type{RequestCommand}*/this._command = null;
         this._failed = false;
     }
 
@@ -58,8 +77,14 @@ export class RequestContext {
             throw this._reason;
     }
 
+    /**
+     * @description
+     * @param {*} [reason]
+     */
     fail(reason = null) {
         this._failed = true;
+        if(reason) this._log.error(reason);
+        else this._log.error("Request failed for unknown reason, generating 500 Internal Server Error.");
         this._reason = WebError.fromError(reason);
     }
 
@@ -73,45 +98,34 @@ export class RequestContext {
 
     /**
      * @description
-     * @return {RequestCommand}
-     */
-    get command() {
-        return this._command;
-    }
-
-    /**
-     * @description
-     * @param {RequestCommand} cmd
-     */
-    set command(cmd) {
-        this._command = cmd;
-    }
-
-    /**
-     * @description
      * @return {string|Object}
      */
     get resources() {
         return this._resources;
     }
 
+
+
     /**
      * @description
      * @param {string} name
-     * @param {null|object} [defaultValue]
+     * @param {object} value
      */
-    getResource(name, defaultValue = null) {
-        let _resource = this._resources.get(name);
-        if(!_resource) return defaultValue;
-        else return _resource;
+    addEntity(name, value) {
+
+        this._resources.set(name, value);
     }
 
     /**
      * @description
-     * @return {EventQueue}
+     * @param {string} name
+     * @param {null|object} [defaultValue]
+     * @returns {object}
      */
-    get eventQueue() {
-        return this._events;
+    getEntity(name, defaultValue = null) {
+        let _resource = this._resources.get(name);
+        if(!_resource) return defaultValue;
+        else return _resource;
     }
 
     /**

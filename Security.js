@@ -20,7 +20,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-import {ApplicationEvent} from "./ApplicationEvent.js";
+import {WebEvent} from "./WebEvent.js";
+import {Subject} from "./Subject.js";
 
 /**
  * @description
@@ -28,27 +29,31 @@ import {ApplicationEvent} from "./ApplicationEvent.js";
  * @copyright Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved.
  * @licence MIT
  */
-export class WebEvent extends ApplicationEvent {
-    static get type() {
-        return "WebEvent";
+export class AuthenticationEvent extends WebEvent {
+    /**
+     * @description
+     * @param {string} name
+     * @param {RequestContext} context
+     * @param {Subject} subject
+     */
+    constructor(name, context, subject = null) {
+        super(name, context, true);
+        /**@type{Subject}*/this._subject = subject;
     }
 
     /**
-     *
-     * @param {string} name
-     * @param {RequestContext} context
-     * @param {boolean} [cancelable]
+     * @ description
+     * @return {Subject}
      */
-    constructor(name, context, cancelable = false) {
-        super(name, cancelable);
-        /**@type{RequestContext}*/this._context = context;
+    get subject() {
+        return this._subject;
     }
 
     /**
      * @description
-     * @return {RequestContext}
+     * @param {Subject} sub
      */
-    get context() {
-        return this._context;
+    set subject(sub) {
+        this._subject = sub
     }
 }
