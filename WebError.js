@@ -126,7 +126,18 @@ export class BadRequest extends WebError {
  * @licence MIT
  */
 export class MethodNotAllowedError extends WebError {
-    constructor(cause = null) {
+    constructor(method = null, cause = null) {
         super("Method Not Allowed", 405, cause);
+        this._method = method;
+    }
+
+    get method() {
+        return this._method;
+    }
+
+    safe() {
+        let _safe = super.safe();
+        _safe.method = this._method;
+        return _safe;
     }
 }

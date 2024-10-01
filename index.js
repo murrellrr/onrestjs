@@ -25,6 +25,7 @@ import {WebApplication} from "./WebApplication.js";
 export * from "./ApplicationLog.js";
 export * from "./AsyncEventEmitter.js";
 export * from "./Context.js";
+export * from "./EntityMap.js";
 export * from "./Events.js";
 export * from "./Resource.js";
 export * from "./Subject.js";
@@ -43,5 +44,5 @@ export * from "./WebResponse.js";
  * @return {WebApplication}
  */
 export default (name, port = 3000, path = "/") => {
-    return new WebApplication(name, path, port);
+    return new WebApplication(name, port);
 }

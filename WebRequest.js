@@ -26,23 +26,73 @@
  * @copyright Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved.
  * @licence MIT
  */
+export class URI {
+    /**
+     * Constructs a new UriParser instance.
+     * @param {string} uri - The URI to parse.
+     */
+    constructor(uri) {
+        // Split the URI by '/', filter out empty strings to handle leading/trailing/multiple slashes
+        this._parts = uri.split("/").filter(part => part.length > 0);
+        this._parts.unshift("/");
+        this._index = 0;
+    }
+
+    /**
+     * Retrieves the next part of the URI.
+     * @returns {string|undefined} The next part of the URI, or undefined if no more parts are available.
+     */
+    next() {
+        if(this._index < this._parts.length)
+            return this._parts[this._index++];
+        else
+            return undefined; // No more parts to return
+    }
+
+    /**
+     * @description
+     * @returns {string}
+     */
+    peek() {
+        return this._parts[this._index];
+    }
+
+    /**
+     * Resets the parser to start from the beginning.
+     */
+    reset() {
+        this._index = 0;
+    }
+
+    /**
+     * Checks if there are more parts to retrieve.
+     * @returns {boolean} True if more parts are available, false otherwise.
+     */
+    hasNext() {
+        return this._index < this._parts.length;
+    }
+}
+
+/**
+ * @description
+ * @author Robert R Murrell
+ * @copyright Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved.
+ * @licence MIT
+ */
 export class WebRequest {
     constructor(request) {
         this._request = request;
         /**@type{Map<string, string>}*/this._params = new Map();
         /**@type{Map<string, string>}*/this._query = new Map();
-        this._uri = "";
+        /**@type{URI}*/this._uri = null;
     }
 
     _parseUri(url) {
         // Use the URL constructor to parse the URI
         let _parsedUrl = new URL(url, "https://localhost");
-        this._uri = _parsedUrl.pathname;
 
         // Split the pathname into resources by "/"
-        let _parts  = this._uri
-            .split('/')
-            .filter(part => part !== ''); // Filter out empty parts
+        this._uri = new URI(_parsedUrl.pathname);
 
         // Parse query parameters and store them in a Map
         _parsedUrl.searchParams.forEach((value, key) => {
@@ -72,7 +122,7 @@ export class WebRequest {
 
     /**
      * @description
-     * @return {string}
+     * @return {URI}
      */
     get uri() {
         return this._uri;

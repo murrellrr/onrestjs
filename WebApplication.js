@@ -44,6 +44,10 @@ export class WebbApplicationLifecycleEvent extends ApplicationEvent {
         this._app = app;
     }
 
+    /**
+     * @description
+     * @returns {WebApplication}
+     */
     get app() {return this._app;}
 }
 
@@ -71,10 +75,9 @@ export class WebApplication extends AsyncEventEmitter {
     /**
      * @description
      * @param {string} name
-     * @param {string} [path]
      * @param {number} [port]
      */
-    constructor(name, path = "/", port = 3000) {
+    constructor(name, port = 3000) {
         super();
         this._name = name;
         this._port = port;

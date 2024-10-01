@@ -20,21 +20,39 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-import {FileNotFoundError, MethodNotAllowedError, WebError} from "./WebError.js";
+import {BadRequest, FileNotFoundError, MethodNotAllowedError, NotImplementedError, WebError} from "./WebError.js";
 import {AsyncEventEmitter} from "./AsyncEventEmitter.js";
 import {WebEvent} from "./WebEvent.js";
 import {Events} from "./Events.js";
+import { createRequire } from "module";
+import {EntityMap, EntityResolver} from "./EntityMap.js";
+
+const require = createRequire(import.meta.url); // Create a require function
+const fromSchema = require('json-schema-defaults');
+
+/**
+ * @typedef {object} ResourceOptions
+ * @property {boolean} [lazy]
+ * @property {boolean} [validate]
+ * @property {null|object} [schema]
+ * @property {null|object} [template]
+ * @property {Array<Array<string>>|Map<string, string>} [mapping]
+ * @property {Array<string>} [supports]
+ */
 
 /**
  * @description
  * @type {{READ: string, DELETE: string, CREATE: string, PAGE: string, UPDATE: string}}
  */
 const ENUM_ENTITY_METHOD = {
-    CREATE: "create",
-    PAGE:   "page",
-    READ:   "read",
-    UPDATE: "update",
-    DELETE: "delete"
+    CREATE:  "create",
+    DELETE:  "delete",
+    INSPECT: "inspect",
+    READ:    "read",
+    OPTIONS: "options",
+    PAGE:    "page",
+    TRACE: "trace",
+    UPDATE:  "update"
 };
 
 /**
@@ -42,9 +60,25 @@ const ENUM_ENTITY_METHOD = {
  * @type {Array<string>}
  * @private
  */
-const _DEFAULT_SUPPORTED_FUNCTIONS = [
+const _DEFAULT_SUPPORTED_OPERATIONS = [
     ENUM_ENTITY_METHOD.CREATE, ENUM_ENTITY_METHOD.PAGE, ENUM_ENTITY_METHOD.READ, ENUM_ENTITY_METHOD.UPDATE,
-    ENUM_ENTITY_METHOD.DELETE
+    ENUM_ENTITY_METHOD.DELETE, ENUM_ENTITY_METHOD.INSPECT, ENUM_ENTITY_METHOD.OPTIONS, ENUM_ENTITY_METHOD.TRACE
+];
+
+/**
+ * @description
+ * @type {Array<Array<string>>}
+ * @private
+ */
+const _DEFAULT_OPERATIONS_METHODS_MAPPINGS = [
+    ["delete",  ENUM_ENTITY_METHOD.DELETE],
+    ["get",     ENUM_ENTITY_METHOD.READ],
+    ["head",    ENUM_ENTITY_METHOD.INSPECT],
+    ["options", ENUM_ENTITY_METHOD.OPTIONS],
+    ["patch",   ENUM_ENTITY_METHOD.UPDATE],
+    ["post",    ENUM_ENTITY_METHOD.CREATE],
+    ["put",     ENUM_ENTITY_METHOD.UPDATE],
+    ["trace",   ENUM_ENTITY_METHOD.TRACE],
 ];
 
 /**
@@ -74,43 +108,6 @@ function cleanAndFormatName(name) {
 }
 
 /**
- * Extracts the ID for each resource from the URL.
- * @param {string} path - The path template (e.g., /company/employee).
- * @param {string} url - The actual URL (e.g., /company/1234567890/employee/abcdefg).
- * @param {number} [slice]
- * @returns {{resource:(null|string), id: (null|string), remainingUrl: (null|string)}} An object containing the
- *          resource ID and remaining URL or null if no match.
- * @throws {FileNotFoundError}
- * @author Robert R Murrell
- * @copyright Copyright (c) 2024, Dark Fox Technology, llc. All rights reserved.
- * @licence MIT
- */
-function matchAndExtractIds(path, url, slice = 2) {
-    if(path === "/")
-        return {
-            resource: "/",
-            id: null, // Return null if no ID is found
-            remainingUrl: url.slice(slice)  // Format remaining URL for further matching
-        };
-
-    const urlParts = url.split('/').filter(Boolean);  // Split URL into parts and filter empty strings
-
-    // Ensure the URL starts with the current entity's name
-    if(urlParts.length === 0 || urlParts[0] !== path)
-        throw new FileNotFoundError(url);
-    let _id = (urlParts[1])? urlParts[1].trim() : null;
-    if(_id === "" || _id === "%20") _id = null;
-
-    const remainingUrl = urlParts.slice(slice).join('/');  // Remaining URL for child resources or actions
-
-    return {
-        resource: urlParts[0],
-        id: _id, // Return null if no ID is found
-        remainingUrl: remainingUrl ? `/${remainingUrl}` : null  // Format remaining URL for further matching
-    };
-}
-
-/**
  * @description
  * @abstract
  * @author Robert R Murrell
@@ -125,13 +122,13 @@ export class AbstractResource extends AsyncEventEmitter {
     /**
      * @decription
      * @param {string} name
-     * @param {null|object} [options]
+     * @param {null|ResourceOptions} [options]
      * @param {null|Map<string, EventListener>} [listeners]
      */
     constructor(name, options = null, listeners = null) {
         super(listeners);
         this._name = cleanAndFormatName(name);
-        this._options = options || {};
+        /**@type{ResourceOptions}}*/this._options = options || {};
     }
 
     /**
@@ -144,7 +141,7 @@ export class AbstractResource extends AsyncEventEmitter {
 
     /**
      * @description
-     * @returns {object}
+     * @returns {ResourceOptions}
      */
     get options() {
         return this._options;
@@ -157,16 +154,17 @@ export class AbstractResource extends AsyncEventEmitter {
      * @abstract
      */
     async execute(context) {
-        //
+        throw new NotImplementedError();
     }
 
     /**
      * @description
      * @param {RequestContext} context
-     * @returns {Promise<void>}
+     * @returns {Promise<AbstractResource>}
+     * @abstract
      */
     async dispatched(context) {
-        // do nothing on purpose
+        throw new NotImplementedError();
     }
 
     /**
@@ -175,8 +173,9 @@ export class AbstractResource extends AsyncEventEmitter {
      * @returns {Promise<AbstractResource>}
      */
     async dispatch(context) {
-        await this.dispatched(context);
-        return null;
+        if(this.name === context.request.uri.next())
+            return await this.dispatched(context);
+        else return null;
     }
 }
 
@@ -277,6 +276,22 @@ export class ContainerResource extends AbstractResource {
     join(resource) {
         this.addChild(resource);
     }
+
+    /**
+     * @description
+     * @param {RequestContext} context
+     * @returns {Promise<AbstractResource>}
+     */
+    async dispatch(context) {
+        let _resource = await super.dispatch(context);
+
+        if(!_resource) {
+            let _child = this._children.get(context.request.uri.peek());
+            if(_child) _resource = await _child.dispatch(context);
+        }
+
+        return _resource;
+    }
 }
 
 /**
@@ -317,8 +332,14 @@ export class Namespace extends ContainerResource {
         super(name, options, listeners);
     }
 
+    /**
+     * @description
+     * @param context
+     * @returns {Promise<null>}
+     */
     async dispatched(context) {
         await this.emit(new NamespaceDispatchedEvent(Events.namespace.On, context, this.name));
+        return null;
     }
 
     /**
@@ -340,23 +361,41 @@ export class Namespace extends ContainerResource {
 export class EntityOperationEvent extends WebEvent {
     /**
      * @description
+     * @param {string} event
      * @param {RequestContext} context
-     * @param {object} entity
-     * @param {string} operation
+     * @param {null|string} id
      * @param {string} name
+     * @param {EntityMap} entity
      */
-    constructor(context, entity, operation, name) {
-        super("", context, true);
-        this._operation = operation;
-        this.entity = entity;
+    constructor(event, context, id, name, entity) {
+        super(event, context, true);
+        /**@type{null|string}*/this._id = id;
+        this._name = name;
+        /**@type{EntityMap}*/this.entity = entity;
     }
 
     /**
      * @description
      * @returns {string}
      */
-    get operation() {
-        return this._operation;
+    get id() {
+        return this._id;
+    }
+
+    /**
+     * @description
+     * @returns {string}
+     */
+    get name() {
+        return this._name;
+    }
+
+    /**
+     * @description
+     * @returns {object}
+     */
+    get body() {
+        return this._context.body;
     }
 }
 
@@ -374,18 +413,15 @@ export class Entity extends ContainerResource {
     /**
      * @description
      * @param {string} name
-     * @param {null|object} [options]
+     * @param {null|ResourceOptions} [options]
      * @param {null|Map<string, EventListener>} [listeners]
      */
     constructor(name, options = null, listeners = null) {
         super(name, options, listeners);
 
         if(typeof this._options.lazy !== "boolean") this._options.lazy = true;
-        if(!this._options.supports) this._options.supports = _DEFAULT_SUPPORTED_FUNCTIONS;
-
-        if(!this._options.supports) this._options.mapping = [
-            "create", "page", "read", "update", "delete"
-        ];
+        if(!this._options.supports) this._options.supports = _DEFAULT_SUPPORTED_OPERATIONS;
+        if(!this._options.mapping) this._options.mapping = _DEFAULT_OPERATIONS_METHODS_MAPPINGS;
         this._options.mapping = new Map(this._options.mapping);
         this._options.schema = this._options.schema || {};
         this._options.validate = !!(this._options.schema);
@@ -418,16 +454,14 @@ export class Entity extends ContainerResource {
 
     /**
      * @description
-     * @param {string} id
-     * @param {object} template
      * @returns {object}
      */
-    getInstance(id, template) {
+    getInstance() {
         let _instance = {};
         if(this._options.validate)
             Object.assign(_instance, fromSchema(this._options.schema));
-        Object.assign(_instance, template);
-        _instance.id = id;
+        if(this._options.template)
+            Object.assign(_instance, this._options.template);
         return _instance;
     }
 
@@ -441,23 +475,50 @@ export class Entity extends ContainerResource {
 
     /**
      * @description
-     * @param {string} method
-     * @returns {boolean} True if the entity operation is supported, false otherwise.
+     * @returns {Map<string, string>}
      */
-    isSupported(method) {
-        return false
+    get mapping() {
+        return this._options.mapping;
     }
 
     /**
      * @description
-     * @param {string} id
-     * @param {RequestContext} context
-     * @returns {Promise<void>}
-     * @private
+     * @param {string} method
+     * @param {null|string} id
+     * @returns {string}
      */
-    async _doReadLifecycle(id, context) {
+    toOperation(method, id = null) {
+        let _operation = /**@type{string}*/this._options.mapping.get(method);
+        if(_operation === ENUM_ENTITY_METHOD.READ && !id) _operation = ENUM_ENTITY_METHOD.PAGE;
+        return _operation;
+    }
+
+    /**
+     * @description
+     * @param {string} operation
+     * @returns {boolean} True if the entity operation is supported, false otherwise.
+     */
+    isSupported(operation) {
+        return this._options.supports.includes(operation);
+    }
+
+    async _doEntityLifecycle(operation, id, context) {
         // Read and store the entity
-        let _instance = this.getInstance(id, this._options.template);
+        let _entity = this.getInstance();
+
+        let _event = new EntityOperationEvent(`${operation}.before`, context, id,
+            this.name, _entity);
+        await this.emit(_event);
+        await this.emit(_event.reset(operation));
+        context.entity.add(this.name, _event.entity);
+        await this.emit(_event.reset(`${operation}.after`));
+
+        return _event.entity;
+    }
+
+    async _doPageLifecycle(context) {
+        context.log.verbose("Page lifecycle executed.", "Entity", this.name, "_doPageLifecycle");
+        return null;
     }
 
     /**
@@ -467,26 +528,141 @@ export class Entity extends ContainerResource {
      * @returns {Promise<object>}
      * @private
      */
-    async _doReadProxy(id, context) {
-        // Create the proxy.
-        return null;
+    async _doReadLifecycle(id, context) {
+        context.log.verbose("Read lifecycle executed.", "Entity", this.name, "_doReadLifecycle");
+        // Read and store the entity
+        return await this._doEntityLifecycle(Events.entity.read.On, id, context);
+    }
+
+    /**
+     * @description
+     * @param {string} id
+     * @param {RequestContext} context
+     * @returns {Promise<object>}
+     * @private
+     */
+    async _doLazyRead(id, context) {
+        context.log.verbose("Lazy-read lifecycle executed.", "Entity", this.name, "_doLazyRead");
+        const _this = this;
+        return new EntityResolver(this.name, async () => {
+            return _this._doReadLifecycle(id, context);
+        });
     }
 
     /**
      * @description
      * @param {RequestContext} context
-     * @returns {Promise<void>}
+     * @returns {Promise<object>}
+     * @private
+     */
+    async _doCreateLifecycle(context) {
+        context.log.verbose("Create lifecycle executed.", "Entity", this.name, "_doCreateLifecycle");
+        return await this._doEntityLifecycle(Events.entity.create.On, null, context);
+    }
+
+    /**
+     * @description
+     * @param {string} id
+     * @param {RequestContext} context
+     * @returns {Promise<object>}
+     * @private
+     */
+    async _doUpdateLifecycle(id, context) {
+        context.log.verbose("Update lifecycle executed.", "Entity", this.name, "_doUpdateLifecycle");
+        return await this._doEntityLifecycle(Events.entity.update.On, id, context);
+    }
+
+    /**
+     * @description
+     * @param {string} id
+     * @param {RequestContext} context
+     * @returns {Promise<object>}
+     * @private
+     */
+    async _doDeleteLifecycle(id, context) {
+        context.log.verbose("Delete lifecycle executed.", "Entity", this.name, "_doDeleteLifecycle");
+        return await this._doEntityLifecycle(Events.entity.delete.On, id, context);
+    }
+
+    /**
+     * @description
+     * @param {string} id
+     * @param {RequestContext} context
+     * @returns {Promise<object>}
+     * @private
+     */
+    async _doInspectLifecycle(id, context) {
+        context.log.verbose("Inspect lifecycle executed.", "Entity", this.name, "_doInspectLifecycle");
+        return null;
+    }
+
+    /**
+     * @description
+     * @param {string} id
+     * @param {RequestContext} context
+     * @returns {Promise<object>}
+     * @private
+     */
+    async _doTraceLifecycle(id, context) {
+        context.log.verbose("Trace lifecycle executed.", "Entity", this.name, "_doTraceLifecycle");
+        return null;
+    }
+
+    /**
+     * @description
+     * @param {string} id
+     * @param {RequestContext} context
+     * @returns {Promise<object>}
+     * @private
+     */
+    async _doOptionsLifecycle(id, context) {
+        context.log.verbose("Options lifecycle executed.", "Entity", this.name, "_doOptionsLifecycle");
+        return null;
+    }
+
+    /**
+     * @throws A 400 error is the ID is missing for the operation type.
+     * @param {null|string} id
+     * @param {string} operation
+     */
+    errorOnRequiredId(id, operation) {
+        if(!id && (operation === ENUM_ENTITY_METHOD.READ || operation === ENUM_ENTITY_METHOD.UPDATE ||
+                   operation === ENUM_ENTITY_METHOD.DELETE || operation === ENUM_ENTITY_METHOD.INSPECT))
+            throw new BadRequest([
+                    {
+                        attribute: "id",
+                        message: `Attribute 'id' required for '${operation}' operation.`,
+                        resource: this.name
+                    }
+                ]);
+    }
+
+    /**
+     * @description
+     * @param {RequestContext} context
+     * @returns {Promise<AbstractResource>}
      */
     async dispatched(context) {
-        // We are only part of a target, we need to load the entity.
-        context.request.addParam(this.name, null);
-        if(!this.isSupported(ENUM_ENTITY_METHOD.READ)) return;
+        context.log.verbose("Dispatched.", "Entity", this.name, "dispatched");
 
-        // Generate and either the resource or the proxy.
-        let _entity = (this.lazy)? await this._doReadProxy(null, context) :
-                                                await this._doReadLifecycle(null, context);
+        // Get our ID, we are a resource
+        let _id = context.request.uri.next();
+        if(_id) context.request.addParam(this.name, _id); // Add the ID as we are going on to the next resource.
 
-        context.addEntity(this.name, _entity);
+        // Determine if WE are the target.
+        if(!context.request.uri.hasNext())
+            return this; // We are probably the target, let the execute take over.
+        else {
+            // Bail out if a page request.
+            if (!this.isSupported(ENUM_ENTITY_METHOD.READ)) return null; // Make sure we support full read
+
+            // Generate and either the resource or the proxy.
+            let _entity = (this.lazy) ? await this._doLazyRead(_id, context) :
+                await this._doReadLifecycle(_id, context);
+            context.entity.add(this.name, _entity);
+
+            return null;
+        }
     }
 
     /**
@@ -495,7 +671,49 @@ export class Entity extends ContainerResource {
      * @returns {Promise<void>}
      */
     async execute(context) {
+        context.log.verbose("Executed.", "Entity", this.name, "execute");
+
         // No we do the lifecycle event that was requested by the HTTP method.
+        let _id = context.request.params.get(this.name);
+        let _operation = this.toOperation(context.request.method, _id);
+        let _entity = null;
+        if(this.isSupported(_operation)) {
+            // Determine which operation we are performing.
+            this.errorOnRequiredId(_id, _operation);
+            switch(_operation) {
+                case ENUM_ENTITY_METHOD.READ:
+                    _entity = await this._doReadLifecycle(_id, context);
+                    break;
+                case ENUM_ENTITY_METHOD.PAGE:
+                    _entity = await this._doPageLifecycle(context);
+                    break;
+                case ENUM_ENTITY_METHOD.CREATE:
+                    _entity = await this._doCreateLifecycle(context);
+                    break;
+                case ENUM_ENTITY_METHOD.UPDATE:
+                    _entity = await this._doUpdateLifecycle(_id, context);
+                    break;
+                case ENUM_ENTITY_METHOD.DELETE:
+                    _entity = await this._doDeleteLifecycle(_id, context);
+                    break;
+                case ENUM_ENTITY_METHOD.INSPECT: // HTTP HEAD request
+                    await this._doInspectLifecycle(_id, context);
+                    break;
+                case ENUM_ENTITY_METHOD.OPTIONS: // HTTP OPTIONS request
+                    await this._doOptionsLifecycle(_id, context);
+                    break;
+                case ENUM_ENTITY_METHOD.TRACE:   // HTTP TRACE request
+                    await this._doTraceLifecycle(_id, context);
+                    break;
+                default:
+                    context.fail(new MethodNotAllowedError(context.request.method));
+            }
+
+            // Send back the entity from the event.
+            if(!context.failed) context.response.send(_entity);
+        }
+        else
+            context.fail(new MethodNotAllowedError(context.request.method));
     }
 }
 
@@ -523,9 +741,19 @@ export class Action extends AbstractResource {
     /**
      * @description
      * @param {RequestContext} context
+     * @returns {Promise<AbstractResource>}
+     */
+    async dispatched(context) {
+        context.log.verbose("Dispatched.", "Action", this.name, "dispatched");
+        return this;
+    }
+
+    /**
+     * @description
+     * @param {RequestContext} context
      * @returns {Promise<void>}
      */
     async execute(context) {
-        //
+        context.log.verbose("Executed.", "Action", this.name, "execute");
     }
 }

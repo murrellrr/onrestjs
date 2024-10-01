@@ -39,7 +39,13 @@ export class WebResponse {
     }
 
     send(body, code = 200, message = "OK") {
-        //
+        if(!body) {
+            code = 204;
+            message = "No Content";
+        }
+        else {
+            //
+        }
     }
 
     /**

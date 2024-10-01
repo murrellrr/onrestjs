@@ -23,6 +23,7 @@
 import {WebResponse} from "./WebResponse.js";
 import {WebRequest} from "./WebRequest.js";
 import {WebError} from "./WebError.js";
+import {EntityMap} from "./EntityMap.js";
 
 /**
  * @description
@@ -58,7 +59,7 @@ export class RequestContext {
         this._response = new WebResponse(res);
         this._body = null;
         /**@type{ApplicationLog}*/this._log = null;
-        /**@type{Map<string, object>}*/this._resources = new Map();
+        /**@type{EntityMap}*/this._entities = new EntityMap();
         this._failed = false;
     }
 
@@ -98,34 +99,10 @@ export class RequestContext {
 
     /**
      * @description
-     * @return {string|Object}
+     * @return {EntityMap}
      */
-    get resources() {
-        return this._resources;
-    }
-
-
-
-    /**
-     * @description
-     * @param {string} name
-     * @param {object} value
-     */
-    addEntity(name, value) {
-
-        this._resources.set(name, value);
-    }
-
-    /**
-     * @description
-     * @param {string} name
-     * @param {null|object} [defaultValue]
-     * @returns {object}
-     */
-    getEntity(name, defaultValue = null) {
-        let _resource = this._resources.get(name);
-        if(!_resource) return defaultValue;
-        else return _resource;
+    get entity() {
+        return this._entities;
     }
 
     /**
